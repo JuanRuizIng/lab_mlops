@@ -52,6 +52,12 @@ class ErrorResponse(BaseModel):
     request_id: str
 
 
+class RegistryInfo(BaseModel):
+    registered_model: str
+    registered_version: int
+    run_id: str
+
+
 class ModelInfo(BaseModel):
     model_version: str
     algorithm: str
@@ -60,3 +66,4 @@ class ModelInfo(BaseModel):
     classes: list[str]
     metrics: dict[str, float]
     evaluation: dict
+    registry: RegistryInfo | None = None

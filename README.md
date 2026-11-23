@@ -62,6 +62,7 @@ gestion-ia-laboratorio/
 │   ├── predict.py            # predict_bean_class() + CLI de predicción
 │   └── laboratorio_drybean.py# Pipeline completo de extremo a extremo
 ├── tests/                    # Pruebas pytest (Definition of Done)
+├── logs/                     # Resultados de predicción local (generados, fuera de Git)
 ├── docs/
 │   ├── reporte_final.md      # Entregable 2: reporte CRISP-DM
 │   └── scrum/                # Entregable 3: backlog, tablero, sprints, retrospectiva, DoD
@@ -82,6 +83,9 @@ python -m venv .venv
 # Linux/Mac:           source .venv/bin/activate
 # Windows PowerShell:  .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+
+# Para ejecutar el notebook con el entorno del proyecto:
+python -m ipykernel install --user --name drybean-lab --display-name "Dry Bean (.venv)"
 ```
 
 | Acción | Comando |
@@ -92,7 +96,50 @@ pip install -r requirements.txt
 | Predecir con el modelo guardado | `python main.py predict` (tras `pipeline`; `--input` y `--n` opcionales) |
 | Ejecutar las pruebas | `python main.py test` |
 
+### MLOps local con MLflow
+
+MLflow registra los experimentos; el entrenamiento sigue ejecutándose en Python, desde el pipeline o el notebook. El servidor se inicia en Docker con almacenamiento persistente local:
+
+```powershell
+docker compose --profile mlops up -d mlflow
+.venv\Scripts\python.exe -m jupyter notebook notebooks/01_laboratorio_drybean.ipynb
+```
+
+Cada celda de entrenamiento del notebook indica directamente la dirección local de MLflow; no hace falta configurar una variable en PowerShell ni ejecutar previamente la celda de configuración para activar el seguimiento. Al terminar, la celda imprime el enlace del run. Abre **http://localhost:5000** y selecciona el experimento `drybean-laboratorio`. Se registran regresión logística y Random Forest por separado con parámetros, semilla, huella del archivo de datos, accuracy, F1 macro, reporte por clase, matriz de confusión y modelo con esquema de entrada. GridSearch se registra al ejecutar su celda. Los resultados que ya estaban guardados en el notebook no aparecen en MLflow hasta volver a ejecutarlo.
+
+La captura corresponde a la primera verificación de seguimiento. En **Runs**, abre un run para ver sus parámetros, métricas y artefactos. En **Datasets** puedes consultar las particiones de entrenamiento y evaluación de los runs recientes, que incluyen sus huellas y la fuente utilizada.
+
+![Runs del experimento drybean-laboratorio en MLflow local, con los modelos guardados](docs/images/mlflow-drybean-runs.png)
+
+La base de experimentos y los artefactos viven en el volumen Docker `drybean_mlflow_data`, fuera de Git. El archivo `logs/predictions.jsonl` registra predicciones locales y es distinto de los runs de entrenamiento en MLflow.
+
+Si el editor pide elegir kernel, selecciona **Dry Bean (.venv)**. La primera celda imprime la ruta de Python; debe terminar en `.venv\\Scripts\\python.exe` en Windows. Un kernel llamado simplemente «Python (venv)» puede apuntar a otra instalación y carecer de las dependencias del proyecto.
+
+**Entrenar, registrar y activar una versión.** Usa el ID de un run de regresión logística creado con el Excel versionado. Puedes obtenerlo del notebook, que usa ese Excel por defecto, o con el comando `train` de MLOps.
+
+```powershell
+.venv\Scripts\python.exe -m src.mlops train
+$runId = Read-Host 'ID del run de regresión logística'
+.venv\Scripts\python.exe -m src.mlops register --run-id $runId
+.venv\Scripts\python.exe -m src.mlops promote
+.venv\Scripts\python.exe main.py docker
+.venv\Scripts\python.exe -m src.mlops status
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/model
+```
+
+`register` revisa las huellas de los datos y las métricas, y etiqueta la versión como `candidate` en MLflow Model Registry. `promote` valida las 16 variables, las siete clases, las probabilidades y un F1 macro mínimo de 0,90 sobre el holdout reproducible del Excel. Publica el artefacto validado en `outputs/models/mlops/releases/` y actualiza `champion`. FastAPI carga el artefacto local al iniciar y expone la versión del registro y el ID del run en `/api/v1/model`. Sin una promoción local, usa el modelo histórico incluido en el repositorio.
+
+La API carga el modelo una vez por inicio. Si ya estaba levantada, reiníciala después de promover o revertir. En Docker, ejecuta `docker compose -f docker-compose.yaml -f docker-compose.dev.yaml restart api` y consulta `/health/ready`. Para revertir usa `.venv\Scripts\python.exe -m src.mlops rollback` y vuelve a iniciar la API. Para seleccionar una versión concreta usa `promote --version N`.
+
+**Monitoreo local.** `.venv\Scripts\python.exe -m src.mlops monitor` genera `outputs/reports/mlops_monitor.json` con volumen, confianza y distribución de clases predichas de la versión activa. Con `monitor --csv RUTA` puedes comparar las 16 variables de un lote nuevo con el entrenamiento. Si el lote incluye la columna `Class`, calcula accuracy y F1 macro sobre esas etiquetas. Los umbrales del laboratorio son al menos 30 observaciones, una diferencia de 10 puntos porcentuales en la proporción de una clase, o un estadístico KS superior a 0,20 en una variable. Es un reporte bajo demanda. La promoción sigue siendo una decisión explícita y se puede repetir con el flujo anterior.
+
+**Verificación local.** FastAPI en Docker sirvió la versión 4 de `drybean-classifier` entrenada en el notebook, revirtió a la versión 3 y volvió a la 4. La API identificó cada versión y predijo `SEKER` en los tres pasos. El holdout de la versión 4 obtuvo accuracy de **0,9192** y F1 macro de **0,9302**. Streamlit respondió por HTTP, pasaron **44 pruebas** y un lote simulado de 100 filas permitió comprobar el reporte de cambios en las variables y las métricas con etiquetas. Se registró además una búsqueda de hiperparámetros reducida como prueba de integración.
+
+Para registrar toda la comparación desde el script, configura `MLFLOW_TRACKING_URI` para `main.py pipeline`. Ese pipeline intenta UCI y tiene respaldo local, mientras que `src.mlops train` siempre usa el Excel versionado para generar un candidato. Detén MLflow con `docker compose --profile mlops stop mlflow` para conservar su volumen.
+
 Sin conexión a internet, la carga usa automáticamente la copia local `data/raw/Dry_Bean_Dataset.xlsx`. Utiliza **Python 3.12**; `requirements.txt` reúne las dependencias directas fijadas del laboratorio, API, dashboard y pruebas. La semilla `random_state=42` permite repetir la partición con los mismos datos y entorno. El artefacto web se preparó con Python 3.12.5 y comprueba versiones de inferencia en su manifiesto. Los modelos históricos pueden emitir advertencias si se cargan con otra versión de scikit-learn.
+
+`python main.py predict` y las predicciones de la API local, con o sin Compose, agregan una línea JSON por resultado en `logs/predictions.jsonl`. Cada línea registra fecha UTC, origen, identificador del lote, índice, clase, confianza y versión del modelo cuando está disponible. Las medidas de entrada quedan fuera del archivo y el log se excluye de Git.
 
 ## Dashboard y despliegue con Docker
 
@@ -114,7 +161,7 @@ docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up --build -d -
 
 El CSV de la interfaz debe ser UTF-8, con las 16 columnas de medidas; `Class` es opcional. Se aceptan hasta 1.000 filas y 2 MiB. Los resultados se pueden descargar y, si el archivo tiene etiquetas reales, la interfaz muestra los aciertos de ese lote por separado. Para detener los contenedores: `docker compose down`.
 
-**Demo opcional en Azure:** [abrir el dashboard](https://drybean-dashboard.gentlecoast-d3143f9a.northcentralus.azurecontainerapps.io), con acceso público desde cualquier IP. La [guía de Azure](deploy/azure/README.md) registra los recursos, imágenes verificadas, actualización y reversión. Desde el 11 de noviembre de 2026 Azure ejecuta la estructura actual (`deploy/web/`). Las mismas imágenes están en Docker Hub como `juanruizing/drybean-api` y `juanruizing/drybean-dashboard` (`latest` y `20261111-0248`).
+El alcance vigente es local. La [guía de Azure](deploy/azure/README.md) conserva el historial de la publicación de noviembre de 2026.
 
 Para iniciar la API en PowerShell con Python 3.12:
 

@@ -11,6 +11,7 @@
 !src/__init__.py
 !src/config.py
 !src/predict.py
+!src/prediction_log.py
 !deploy/web/dashboard/
 !deploy/web/dashboard/*.py
 !deploy/web/dashboard/views/

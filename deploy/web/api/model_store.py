@@ -40,6 +40,9 @@ def load_bundle(settings: Settings) -> ModelBundle:
     for name, expected in manifest["packages"].items():
         if version(name) != expected:
             raise ValueError(f"Versión incompatible de {name}: se requiere {expected}")
+    training = manifest.get("training", {})
+    if "registered_model" in training:
+        manifest["registry"] = training
     info = ModelInfo.model_validate(manifest)
     features = info.features
     if len(features) != len(set(features)) or set(features) != set(BeanFeatures.model_fields):

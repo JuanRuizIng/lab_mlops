@@ -7,13 +7,15 @@ services:
       dockerfile: deploy/web/Dockerfile
       target: api
     environment:
-      MODEL_PATH: /app/outputs/models/serving/logistic_regression_drybean.joblib
-      MODEL_MANIFEST_PATH: /app/outputs/models/serving/model_manifest.json
       MAX_BATCH_SIZE: ${MAX_BATCH_SIZE:-1000}
       MAX_REQUEST_BYTES: ${MAX_REQUEST_BYTES:-2097152}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DRYBEAN_PREDICTION_LOG: /app/logs/predictions.jsonl
     restart: unless-stopped
     read_only: true
+    volumes:
+      - ./outputs/models/mlops:/app/outputs/models/mlops:ro
+      - ./logs:/app/logs
     tmpfs:
       - /tmp
     cap_drop: [ALL]
@@ -41,7 +43,31 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     networks: [app, web]
+  mlflow:
+    profiles: [mlops]
+    image: ghcr.io/mlflow/mlflow:v3.7.0
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri
+      - sqlite:////mlflow/mlflow.db
+      - --artifacts-destination
+      - /mlflow/artifacts
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --allowed-hosts
+      - localhost:5000,127.0.0.1:5000,mlflow:5000
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    restart: unless-stopped
+    networks: [web]
 networks:
   app:
     internal: true
   web:
+volumes:
+  mlflow_data:

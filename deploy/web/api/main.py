@@ -1,6 +1,7 @@
 """FastAPI sirve el Pipeline preparado; el ciclo de inicio valida y carga una sola vez."""
 from contextlib import asynccontextmanager
 import logging
+import os
 import sys
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,10 +15,12 @@ from deploy.web.api.model_store import ModelBundle, load_bundle
 from deploy.web.api.schemas import ErrorResponse, ModelInfo, PredictionRequest, PredictionResponse
 from deploy.web.api.settings import Settings
 from src.predict import predict_probabilities
+from src.prediction_log import record_predictions
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
+    prediction_log = os.environ.get("DRYBEAN_PREDICTION_LOG")
 
     @asynccontextmanager
     async def lifespan(application):
@@ -76,7 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bundle = get_bundle()
         return {"status": "ready", "model_version": bundle.info.model_version}
 
-    @application.get("/api/v1/model", response_model=ModelInfo, tags=["Modelo"])
+    @application.get("/api/v1/model", response_model=ModelInfo, response_model_exclude_none=True, tags=["Modelo"])
     def model_info():
         return get_bundle().info
 
@@ -102,6 +105,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "confidence": float(row[winner]),
                 "probabilities": dict(zip(bundle.info.classes, row.tolist())),
             })
+        if prediction_log:
+            try:
+                record_predictions(
+                    results,
+                    source="api",
+                    model_version=bundle.info.model_version,
+                    request_id=request.state.request_id,
+                    log_path=prediction_log,
+                )
+            except OSError:
+                logger.warning("request_id=%s prediction_log_write_failed", request.state.request_id)
         return {
             "request_id": request.state.request_id,
             "model_version": bundle.info.model_version,

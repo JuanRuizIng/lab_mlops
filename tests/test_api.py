@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
+from shutil import copyfile
 import warnings
 
 from fastapi.testclient import TestClient
@@ -12,15 +13,19 @@ import pytest
 from sklearn.exceptions import InconsistentVersionWarning
 
 from deploy.web.api.main import create_app
+from deploy.web.api import settings as api_settings
 from deploy.web.api.model_store import load_bundle
 from deploy.web.api.schemas import BeanFeatures
-from deploy.web.api.settings import Settings
+from deploy.web.api.settings import SERVING_DIR, Settings
 from src.data import clean_data, load_data, split_data
 
 
 @pytest.fixture(scope="module")
 def settings():
-    return Settings()
+    return Settings(
+        model_path=SERVING_DIR / "logistic_regression_drybean.joblib",
+        manifest_path=SERVING_DIR / "model_manifest.json",
+    )
 
 
 @pytest.fixture(scope="module")
@@ -227,3 +232,28 @@ def test_saved_serving_artifact_matches_manifest(settings):
     for name, expected in manifest["training"]["source_sha256"].items():
         source = Path(name).read_text(encoding="utf-8").encode("utf-8")
         assert hashlib.sha256(source).hexdigest() == expected
+
+
+def test_api_uses_promoted_version_on_startup(settings, instances, monkeypatch, tmp_path):
+    monkeypatch.setattr(api_settings, "MLOPS_DIR", tmp_path)
+    monkeypatch.delenv("MODEL_PATH", raising=False)
+    monkeypatch.delenv("MODEL_MANIFEST_PATH", raising=False)
+    manifest = json.loads(settings.manifest_path.read_text(encoding="utf-8"))
+    pointer = tmp_path / "current.json"
+    for version in (2, 1):
+        release = tmp_path / "releases" / f"v{version}"
+        release.mkdir(parents=True)
+        copyfile(settings.model_path, release / settings.model_path.name)
+        manifest["model_version"] = f"drybean-local-v{version}"
+        manifest["training"].update(
+            registered_model="drybean-classifier", registered_version=version, run_id=f"run-{version}",
+        )
+        (release / settings.manifest_path.name).write_text(json.dumps(manifest), encoding="utf-8")
+        pointer.write_text(json.dumps({"version": version}), encoding="utf-8")
+        with TestClient(create_app()) as http:
+            metadata = http.get("/api/v1/model").json()
+            response = http.post("/api/v1/predict", json={"instances": instances[:1]})
+        assert metadata["registry"]["registered_version"] == version
+        assert metadata["registry"]["run_id"] == f"run-{version}"
+        assert response.status_code == 200
+        assert response.json()["model_version"] == manifest["model_version"]

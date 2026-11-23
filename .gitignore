@@ -21,3 +21,16 @@ Thumbs.db
 .idea/
 
 .claude/
+
+# Resultados de inferencia local (conservar solo la carpeta)
+logs/*
+!logs/.gitkeep
+
+# Almacenamiento de experimentos MLflow si se inicia fuera de Compose
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Versiones promocionadas desde MLflow; se recrean desde el registro local
+outputs/models/mlops/
+outputs/reports/mlops_monitor.json

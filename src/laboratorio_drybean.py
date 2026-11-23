@@ -22,6 +22,7 @@ from src.data import clean_data, load_data, quality_report, split_data
 from src.evaluate import compute_metrics, report_df, save_confusion_matrix, top_confusions
 from src.models import build_baseline, build_forest
 from src.predict import load_model, predict_bean_class
+from src.training import LOCAL_DATA, UCI_DATA, fit_and_evaluate, log_grid_search
 
 
 def run(extras: bool = False) -> dict:
@@ -29,6 +30,7 @@ def run(extras: bool = False) -> dict:
 
     # --- Fase 2: comprensión de los datos ---------------------------------
     df = load_data()
+    dataset_source = UCI_DATA if df.attrs["source"].startswith("UCI") else LOCAL_DATA
     print(f"Fuente: {df.attrs.get('source')}")
     quality = quality_report(df)
     print(f"Shape: {df.shape} | nulos: {quality['nulos_totales']} | duplicados: {quality['duplicados']}")
@@ -49,14 +51,16 @@ def run(extras: bool = False) -> dict:
     print(f"Tras limpieza: {df.shape} | train={len(X_train)} test={len(X_test)}")
 
     # --- Fase 4: modelado -------------------------------------------------
-    baseline = build_baseline().fit(X_train, y_train)
-    forest = build_forest().fit(X_train, y_train)
+    baseline, y_pred_base, m_base = fit_and_evaluate(
+        build_baseline(), X_train, y_train, X_test, y_test,
+        run_name="logistic-regression", source="pipeline", dataset_source=dataset_source,
+    )
+    forest, y_pred_rf, m_rf = fit_and_evaluate(
+        build_forest(), X_train, y_train, X_test, y_test,
+        run_name="random-forest", source="pipeline", dataset_source=dataset_source,
+    )
 
     # --- Fase 5: evaluación -----------------------------------------------
-    y_pred_base = baseline.predict(X_test)
-    y_pred_rf = forest.predict(X_test)
-    m_base = compute_metrics(y_test, y_pred_base)
-    m_rf = compute_metrics(y_test, y_pred_rf)
 
     results = pd.DataFrame({
         "modelo": ["Logistic Regression", "Random Forest"],
@@ -133,6 +137,7 @@ def run(extras: bool = False) -> dict:
             n_jobs=-1,
         ).fit(X_train, y_train)
         m_grid = compute_metrics(y_test, grid.best_estimator_.predict(X_test))
+        log_grid_search(grid, X_train, y_train, X_test, y_test, source="pipeline", dataset_source=dataset_source)
         summary["grid_search"] = {
             "best_params": grid.best_params_,
             "best_cv_f1_macro": grid.best_score_,

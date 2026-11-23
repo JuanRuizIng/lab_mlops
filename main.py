@@ -9,8 +9,10 @@
     python main.py test           # pruebas
 """
 import argparse
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 PY = sys.executable
 COMPOSE = ["docker", "compose", "-f", "docker-compose.yaml", "-f", "docker-compose.dev.yaml"]
@@ -21,7 +23,12 @@ def run(cmd):
 
 
 def local():
-    api = subprocess.Popen([PY, "-m", "uvicorn", "deploy.web.api.main:app", "--host", "127.0.0.1", "--port", "8000"])
+    env = os.environ.copy()
+    env["DRYBEAN_PREDICTION_LOG"] = str(Path(__file__).resolve().parent / "logs" / "predictions.jsonl")
+    api = subprocess.Popen(
+        [PY, "-m", "uvicorn", "deploy.web.api.main:app", "--host", "127.0.0.1", "--port", "8000"],
+        env=env,
+    )
     try:
         # ponytail: el dashboard arranca antes de que la API esté lista; muestra el estado al recargar.
         subprocess.call([PY, "-m", "streamlit", "run", "deploy/web/main.py", "--server.address=127.0.0.1"])

@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && pip check
 COPY --chown=appuser:appuser deploy/__init__.py ./deploy/__init__.py
 COPY --chown=appuser:appuser deploy/web/__init__.py ./deploy/web/__init__.py
 COPY --chown=appuser:appuser deploy/web/api/ ./deploy/web/api/
-COPY --chown=appuser:appuser src/__init__.py src/config.py src/predict.py ./src/
+COPY --chown=appuser:appuser src/__init__.py src/config.py src/predict.py src/prediction_log.py ./src/
 COPY --chown=appuser:appuser outputs/models/serving/logistic_regression_drybean.joblib outputs/models/serving/model_manifest.json ./outputs/models/serving/
 USER appuser
 EXPOSE 8000

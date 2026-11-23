@@ -14,6 +14,7 @@ import joblib
 import pandas as pd
 
 from src import config
+from src.prediction_log import record_predictions
 
 
 def load_model(path=config.MODEL_PATH):
@@ -52,6 +53,10 @@ def main() -> None:
     result = predict_batch(model, data)
     if real is not None:
         result.insert(0, "real_class", real.values)
+    record_predictions(
+        result[["predicted_class", "confidence"]].to_dict("records"),
+        source="main.py predict",
+    )
     print(result[[c for c in ("real_class", "predicted_class", "confidence") if c in result]])
 
 

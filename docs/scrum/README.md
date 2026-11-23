@@ -1,6 +1,6 @@
 # Evidencia Scrum ML
 
-Este directorio reúne la planificación y la evidencia de trabajo del laboratorio Dry Bean. Los sprints 1–3 cubren el entregable académico; los sprints 4–6 documentan la extensión web opcional. El despliegue en Azure funciona, pero la evidencia disponible no acredita reuniones, aceptación del Product Owner ni entrega académica del paquete Scrum.
+Este directorio reúne la planificación y la evidencia de trabajo del laboratorio Dry Bean. Los sprints 1–3 cubren el entregable académico y los sprints 4–6 documentan la extensión web. La confirmación de reuniones, aceptación del Product Owner y entrega académica sigue a cargo del equipo.
 
 ## Por dónde empezar
 
@@ -12,7 +12,7 @@ Este directorio reúne la planificación y la evidencia de trabajo del laborator
 | [Definition of Done](definition_of_done.md) | ¿Qué calidad se comprobó y qué falta verificar? |
 | [Retrospectiva](retrospectiva.md) | ¿Qué observaciones técnicas hay y cuáles requieren confirmación del equipo? |
 
-El [reporte final](../reporte_final.md) contiene la evidencia de CRISP-DM y el [README del proyecto](../../README.md) explica TDSP, ejecución y despliegue. Las versiones publicadas y la verificación remota están en la [guía de Azure](../../deploy/azure/README.md).
+El [reporte final](../reporte_final.md) contiene la evidencia de CRISP-DM. El [flujo MLOps local](../../README.md#mlops-local-con-mlflow) documenta el seguimiento, la promoción, la reversión y el monitoreo del modelo. La [guía de Azure](../../deploy/azure/README.md) conserva el historial de publicación anterior.
 
 ## Cómo interpretar los estados
 
